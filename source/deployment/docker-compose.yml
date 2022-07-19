@@ -1,0 +1,130 @@
+version: '3.7'
+
+# Example Docker Compose config file for PhotoPrism (Windows / AMD64)
+#
+# Note:
+# - Running PhotoPrism on a server with less than 4 GB of swap space or setting a memory/swap limit can cause unexpected
+#   restarts ("crashes"), especially when the indexer temporarily needs more memory to process large files.
+# - Windows Pro users should disable the WSL 2 based engine in Docker Settings > General so that
+#   they can mount drives other than C:. This will enable Hyper-V, which Microsoft doesn't offer
+#   to its Windows Home customers. Docker Desktop uses dynamic memory allocation with WSL 2.
+#   It's important to explicitly increase the Docker memory limit to 4 GB or more when using Hyper-V.
+#   The default of 2 GB may reduce indexing performance and cause unexpected restarts.
+# - If you install PhotoPrism on a public server outside your home network, please always run it behind a secure
+#   HTTPS reverse proxy such as Traefik, Caddy, or NGINX. Your files and passwords will otherwise be transmitted
+#   in clear text and can be intercepted by anyone, including your provider, hackers, and governments.
+#
+# Documentation : https://docs.photoprism.org/getting-started/docker-compose/
+# Docker Hub URL: https://hub.docker.com/r/photoprism/photoprism/
+#
+# DOCKER COMPOSE COMMAND REFERENCE
+# see https://docs.photoprism.org/getting-started/docker-compose/#command-line-interface
+# --------------------------------------------------------------------------
+# Start    | docker-compose up -d
+# Stop     | docker-compose stop
+# Update   | docker-compose pull
+# Logs     | docker-compose logs --tail=25 -f
+# Terminal | docker-compose exec photoprism bash
+# Help     | docker-compose execak photoprism photoprism help
+# Config   | docker-compose exec photoprism photoprism config
+# Reset    | docker-compose exec photoprism photoprism reset
+# Backup   | docker-compose exec photoprism photoprism backup -a -i
+# Restore  | docker-compose exec photoprism photoprism restore -a -i
+# Index    | docker-compose exec photoprism photoprism index
+# Reindex  | docker-compose exec photoprism photoprism index -f
+# Import   | docker-compose exec photoprism photoprism import
+#
+# To search originals for faces without a complete rescan:
+# docker-compose exec photoprism photoprism faces index
+
+services:
+  ## App Server (required)
+  photoprism:
+    restart: unless-stopped
+    ## Use photoprism/photoprism:preview for testing preview builds:
+    image: photoprism/photoprism:latest
+    depends_on:
+      - mariadb
+    ## Only enable automatic restarts once your installation is properly
+    ## configured as it otherwise may get stuck in a restart loop,
+    ## see https://docs.photoprism.org/getting-started/faq/#why-is-photoprism-getting-stuck-in-a-restart-loop
+    restart: unless-stopped
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+    ports:
+      - "9000:2342"
+    environment:
+      # Your initial admin password (min 4 characters)
+      PHOTOPRISM_ADMIN_PASSWORD: "$PHOTOPRISM_ADMIN_PASSWORD"
+      # Public server URL incl http:// or https:// and /path, :port is optional
+      PHOTOPRISM_SITE_URL: "$PHOTOPRISM_SITE_URL" 
+      PHOTOPRISM_ORIGINALS_LIMIT: 100_000            # File size limit for originals in MB (increase for high-res video)
+      PHOTOPRISM_HTTP_COMPRESSION: "gzip"            # Improves transfer speed and bandwidth utilization (none or gzip)
+      PHOTOPRISM_DEBUG: "false"                      # Run in debug mode, shows additional log messages
+      PHOTOPRISM_PUBLIC: "false"                     # No authentication required, disables password protection
+      PHOTOPRISM_READONLY: "false"                   # Don't modify originals folder; disables import, upload, and delete
+      PHOTOPRISM_EXPERIMENTAL: "false"               # Enables experimental features
+      PHOTOPRISM_DISABLE_CHOWN: "false"              # Disables storage permission updates on startup
+      PHOTOPRISM_DISABLE_WEBDAV: "false"             # Disables built-in WebDAV server
+      PHOTOPRISM_DISABLE_SETTINGS: "false"           # Disables Settings in Web UI
+      PHOTOPRISM_DISABLE_TENSORFLOW: "false"         # Disables all features depending on TensorFlow
+      PHOTOPRISM_DISABLE_FACES: "false"              # Disables facial recognition
+      PHOTOPRISM_DISABLE_CLASSIFICATION: "false"     # Disables image classification
+      PHOTOPRISM_DARKTABLE_PRESETS: "false"          # Enables Darktable presets and disables concurrent RAW conversion
+      PHOTOPRISM_DETECT_NSFW: "false"                # Flag photos as private that MAY be offensive (requires TensorFlow)
+      PHOTOPRISM_UPLOAD_NSFW: "true"                 # Allow uploads that MAY be offensive
+      PHOTOPRISM_DATABASE_DRIVER: "mysql"            # Use MariaDB 10.5+ or MySQL 8+ instead of SQLite for improved performance
+      PHOTOPRISM_DATABASE_SERVER: "mariadb:3306"     # MariaDB or MySQL database server hostname (:port is optional)
+      PHOTOPRISM_DATABASE_NAME: "photoprism"         # MariaDB or MySQL database schema name
+      PHOTOPRISM_DATABASE_USER: "photoprism"         # MariaDB or MySQL database user name
+      # MariaDB or MySQL database user password
+      PHOTOPRISM_DATABASE_PASSWORD: "$PHOTOPRISM_DATABASE_PASSWORD"
+      PHOTOPRISM_SITE_TITLE: "Photoprism"
+      PHOTOPRISM_SITE_CAPTION: "Kalochy robią zdjęcia"
+      PHOTOPRISM_SITE_DESCRIPTION: ""
+      PHOTOPRISM_SITE_AUTHOR: ""
+      HOME: "/photoprism"
+    working_dir: "/photoprism"
+    volumes:
+      ## The *originals* folder contains your original photo and video files (- "C:/Directory:/photoprism/originals"):
+      - "../../originals:/photoprism/originals"
+      ## You may mount an *import* folder from which files can be transferred to *originals* (optional):
+      - "../../import:/photoprism/import"
+      ## Multiple folders can be made accessible by mounting them as subfolders of /photoprism/originals:
+      # - "D:/Pictures:/photoprism/originals/Pictures"
+      # - "E:/Friends:/photoprism/originals/Friends"
+
+      ## Cache, session, thumbnail, and sidecar files will be created in the *storage* folder (never remove):
+      - "../../data/storage:/photoprism/storage"
+
+  ## Database Server (recommended)
+  ## see https://docs.photoprism.org/getting-started/faq/#should-i-use-sqlite-mariadb-or-mysql
+  mariadb:
+    restart: unless-stopped
+    image: mariadb:10.6
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+    ## --lower-case-table-names=1 stores tables in lowercase and compares names in a case-insensitive manner
+    ## see https://mariadb.com/kb/en/server-system-variables/#lower_case_table_names
+    command: mysqld --innodb-buffer-pool-size=128M --lower-case-table-names=1 --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
+    ## Never store database files on an unreliable device such as a USB flash drive or a shared network folder:
+    volumes:
+      - "../../data/mariadb:/var/lib/mysql"
+    environment:
+      MYSQL_ROOT_PASSWORD: $PHOTOPRISM_DATABASE_PASSWORD
+      MYSQL_DATABASE: photoprism
+      MYSQL_USER: photoprism
+      MYSQL_PASSWORD: $PHOTOPRISM_DATABASE_PASSWORD
+
+  ## Watchtower upgrades services automatically (optional)
+  ## see https://docs.photoprism.org/getting-started/updates/#watchtower
+  watchtower:
+    restart: unless-stopped
+    image: containrrr/watchtower
+    environment:
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_POLL_INTERVAL: 7200 # checks for updates every two hours
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"

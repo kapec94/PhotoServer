@@ -1,0 +1,9 @@
+source/deployment/.env
+
+data/*
+!data/README.md
+
+import/
+
+originals/*
+!originals/README.md

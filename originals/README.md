@@ -1,0 +1,1 @@
+Here you can put your photos. Photoprism will also put them here after you import through the application GUI.
