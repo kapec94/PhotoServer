@@ -81,7 +81,7 @@ services:
       # MariaDB or MySQL database user password
       PHOTOPRISM_DATABASE_PASSWORD: "$PHOTOPRISM_DATABASE_PASSWORD"
       PHOTOPRISM_SITE_TITLE: "Photoprism"
-      PHOTOPRISM_SITE_CAPTION: "Kalochy robią zdjęcia"
+      PHOTOPRISM_SITE_CAPTION: "$PHOTOPRISM_SITE_CAPTION"
       PHOTOPRISM_SITE_DESCRIPTION: ""
       PHOTOPRISM_SITE_AUTHOR: ""
       HOME: "/photoprism"
